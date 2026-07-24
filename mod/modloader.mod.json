@@ -1,0 +1,43 @@
+{
+  "id": "shared-md-alert",
+  "name": "本地内容弹窗组件",
+  "author": [
+	"逍婉瑶"
+  ],
+  "description": "基于 markdown-it 和 SweetAlert2 的本地内容弹窗组件, 支持 Markdown, 纯文本和网页内容, 并提供持久化显示规则和关闭限制.",
+  "version": "1.0.0",
+  "update": {
+    "source": "github",
+    "repo": "shouennyou/DC_mod_shared-md-alert"
+  },
+  "injections": [
+    {
+      "name": "LocalAlert 核心",
+      "path": "./assets/shared-md-alert/modules/core.js"
+    },
+    {
+      "name": "LocalAlert 持久化",
+      "path": "./assets/shared-md-alert/modules/storage.js"
+    },
+    {
+      "name": "LocalAlert 依赖加载",
+      "path": "./assets/shared-md-alert/modules/libraries.js"
+    },
+    {
+      "name": "LocalAlert 内容渲染",
+      "path": "./assets/shared-md-alert/modules/content.js"
+    },
+    {
+      "name": "LocalAlert 关闭控制",
+      "path": "./assets/shared-md-alert/modules/close.js"
+    },
+    {
+      "name": "LocalAlert 弹窗视图",
+      "path": "./assets/shared-md-alert/modules/modal.js"
+    },
+    {
+      "name": "本地内容弹窗组件",
+      "path": "./assets/shared-md-alert/alert.js"
+    }
+  ]
+}

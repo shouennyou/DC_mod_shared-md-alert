@@ -1,0 +1,31 @@
+name: Manual Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '请输入版本号 (例如: 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify tag not exists
+        run: |
+          if git ls-remote --tags origin | grep -q "refs/tags/${{ github.event.inputs.tag_name }}$"; then
+            echo "::error::Tag ${{ github.event.inputs.tag_name }} 已存在"
+            exit 1
+          fi
+          echo "Tag 可用"
+
+  call-build:
+    needs: validate-and-check
+    uses: ./.github/workflows/build-logic.yml
+    with:
+      tag_name: ${{ github.event.inputs.tag_name }}

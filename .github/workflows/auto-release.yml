@@ -1,0 +1,38 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-call:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      
+      - name: Get version and check tag
+        id: ver
+        run: |
+          NEW=$(jq -r '.version' mod/modloader.mod.json)
+          
+          # 检查 Tag 是否已被占用
+          if git ls-remote --tags origin | grep -q "refs/tags/$NEW$"; then
+            echo "Tag $NEW 已存在，跳过发布。"
+            exit 0
+          fi
+          
+          echo "ver=$NEW" >> $GITHUB_OUTPUT
+
+    outputs:
+      new_version: ${{ steps.ver.outputs.ver }}
+
+  call-build:
+    needs: check-and-call
+    if: needs.check-and-call.outputs.new_version != ''
+    uses: ./.github/workflows/build-logic.yml
+    with:
+      tag_name: ${{ needs.check-and-call.outputs.new_version }}

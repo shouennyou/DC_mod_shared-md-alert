@@ -1,0 +1,61 @@
+name: Build Logic
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install asar
+        run: npm install -g asar
+
+      - name: Build asar
+        run: |
+          ID=$(jq -r '.id' mod/modloader.mod.json)
+          asar pack mod "$ID.asar"
+          echo "ID=$ID" >> $GITHUB_ENV
+
+      - name: Verify build
+        run: |
+          if [ ! -f "$ID.asar" ]; then
+            echo "::error::构建失败：$ID.asar 不存在"
+            exit 1
+          fi
+          echo "构建成功：$ID.asar"
+
+      - name: Generate update.json
+        run: |
+          UPDATE_JSON="$RUNNER_TEMP/update.json"
+          jq --arg asarUrl "https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag_name }}/$ID.asar" \
+             --arg changelog "https://github.com/${{ github.repository }}/releases/tag/${{ inputs.tag_name }}" \
+             'del(.update, .injections) + {asarUrl: $asarUrl, changelog: $changelog}' \
+             mod/modloader.mod.json > "$UPDATE_JSON"
+          echo "UPDATE_JSON=$UPDATE_JSON" >> $GITHUB_ENV
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: ${{ inputs.tag_name }}
+          files: |
+            ${{ env.ID }}.asar
+            ${{ env.UPDATE_JSON }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
