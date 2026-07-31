@@ -5,6 +5,7 @@
   if (!core) throw new Error('LocalAlert 核心模块未加载.')
 
   const prefix = core.constants.storagePrefix
+  const configFile = 'config/shared-md-alert.json'
   const memoryResult = function (key, backend) {
     return { state: core.memoryStates.get(key) || null, backend: backend }
   }
@@ -22,10 +23,41 @@
     return mode
   }
 
-  function getStorageBackend(key, persistence) {
+  function getConfigApi() {
+    const api = global.api && global.api.modloader
+    if (!api || typeof api.readFileSync !== 'function' || typeof api.writeFileSync !== 'function') {
+      return null
+    }
+    return api
+  }
+
+  function readConfigData(api) {
+    const content = api.readFileSync(configFile)
+    if (content === null) return { exists: false, states: {} }
+
+    const data = JSON.parse(content)
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('配置文件格式无效.')
+    }
+    if (data.states === undefined) return { exists: true, states: {} }
+    if (!data.states || typeof data.states !== 'object' || Array.isArray(data.states)) {
+      throw new Error('配置状态格式无效.')
+    }
+    return { exists: true, states: data.states }
+  }
+
+  function writeConfigStates(api, states) {
+    const result = api.writeFileSync(configFile, JSON.stringify({ version: 1, states: states }, null, 2))
+    if (!result || !result.success) {
+      throw new Error(result && result.error ? result.error : '配置文件写入失败.')
+    }
+  }
+
+  function getStorageBackend(persistence) {
+    if (getConfigApi()) return 'config'
     try {
       if (!global.localStorage) throw new Error('localStorage 不可用.')
-      global.localStorage.getItem(key)
+      global.localStorage.getItem(prefix)
       return 'local'
     } catch (error) {
       if (persistence === 'required') throw new Error('持久化存储不可用, 无法保证显示策略.')
@@ -37,24 +69,36 @@
 
   function readState(id, persistence) {
     const key = getStorageKey(id)
-    const backend = getStorageBackend(key, persistence)
+    const backend = getStorageBackend(persistence)
     if (backend === 'memory') return memoryResult(key, backend)
     try {
+      if (backend === 'config') {
+        const states = readConfigData(getConfigApi()).states
+        return { state: Object.prototype.hasOwnProperty.call(states, key) ? states[key] : null, backend: backend }
+      }
       const value = global.localStorage.getItem(key)
       return { state: value ? JSON.parse(value) : null, backend: backend }
     } catch (error) {
-      return memoryResult(key, getStorageBackend(key, persistence))
+      if (persistence === 'required') throw new Error('持久化存储读取失败.')
+      return memoryResult(key, 'memory')
     }
   }
 
   function writeState(id, state, persistence) {
     const key = getStorageKey(id)
-    const serialized = JSON.stringify(state)
     try {
-      if (getStorageBackend(key, persistence) !== 'local') throw new Error('localStorage 不可用.')
-      global.localStorage.setItem(key, serialized)
+      const backend = getStorageBackend(persistence)
+      if (backend === 'memory') throw new Error('持久化存储不可用.')
+      if (backend === 'config') {
+        const api = getConfigApi()
+        const data = readConfigData(api)
+        data.states[key] = state
+        writeConfigStates(api, data.states)
+      } else {
+        global.localStorage.setItem(key, JSON.stringify(state))
+      }
       core.memoryStates.delete(key)
-      return 'local'
+      return backend
     } catch (error) {
       if (persistence === 'required') throw new Error('持久化存储写入失败.')
       core.memoryStates.set(key, state)
@@ -66,8 +110,17 @@
     const key = getStorageKey(id)
     let backend = 'memory'
     try {
-      backend = getStorageBackend(key, persistence)
-      if (backend === 'local') global.localStorage.removeItem(key)
+      backend = getStorageBackend(persistence)
+      if (backend === 'config') {
+        const api = getConfigApi()
+        const data = readConfigData(api)
+        if (Object.prototype.hasOwnProperty.call(data.states, key)) {
+          delete data.states[key]
+          writeConfigStates(api, data.states)
+        }
+      } else if (backend === 'local') {
+        global.localStorage.removeItem(key)
+      }
     } catch (error) {
       if (persistence === 'required') throw new Error('持久化存储删除失败.')
       backend = 'memory'
@@ -109,11 +162,19 @@
   }
 
   function resetAll(persistence) {
-    let backend = getStorageBackend(prefix + 'reset-all', persistence)
+    let backend = getStorageBackend(persistence)
     try {
-      for (let index = global.localStorage.length - 1; backend === 'local' && index >= 0; index -= 1) {
-        const key = global.localStorage.key(index)
-        if (key && key.indexOf(prefix) === 0) global.localStorage.removeItem(key)
+      if (backend === 'config') {
+        const api = getConfigApi()
+        const data = readConfigData(api)
+        if (data.exists && Object.keys(data.states).length > 0) {
+          writeConfigStates(api, {})
+        }
+      } else {
+        for (let index = global.localStorage.length - 1; backend === 'local' && index >= 0; index -= 1) {
+          const key = global.localStorage.key(index)
+          if (key && key.indexOf(prefix) === 0) global.localStorage.removeItem(key)
+        }
       }
     } catch (error) {
       if (persistence === 'required') throw new Error('持久化存储删除失败.')

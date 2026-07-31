@@ -73,7 +73,7 @@
       libraries: {
         autoLoad: true,
         loadTimeoutMs: 5000,
-        baseUrl: './assets/shared-md-alert/js/',
+        baseUrl: './assets/lib/',
         markdownItSrc: null,
         sweetAlertSrc: null,
       },
