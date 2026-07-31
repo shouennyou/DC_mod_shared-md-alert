@@ -133,32 +133,74 @@
     const settings = display && typeof display === 'object' ? display : {}
     const mode = settings.mode || 'always'
     const version = settings.version === undefined || settings.version === null ? '' : String(settings.version)
+    const key = settings.key === undefined || settings.key === null ? '' : String(settings.key).trim()
     if (['always', 'once', 'version'].indexOf(mode) === -1) {
       throw new Error('display.mode 只能是 always, once 或 version.')
     }
     if (mode === 'version' && !version) throw new Error('display.mode 为 version 时必须提供 display.version.')
-    return { mode: mode, version: version }
+    return { mode: mode, version: version, key: key }
   }
 
-  function shouldShow(id, display, force, persistence) {
+  function getUrlScope(content, rawContent) {
+    const rawValue = rawContent && rawContent.value !== undefined && rawContent.value !== null
+      ? rawContent.value
+      : content.value
+    let value = String(rawValue).trim().replace(/\\/g, '/')
+    const hashIndex = value.indexOf('#')
+    if (hashIndex >= 0) value = value.slice(0, hashIndex)
+
+    // 远程 URL 的域名属于资源身份, 本地资源则忽略会随游戏移动变化的目录部分.
+    if (/^(https?:)?\/\//i.test(value)) return 'url:' + value
+
+    while (value.indexOf('./') === 0) value = value.slice(2)
+    const assetsIndex = value.toLowerCase().lastIndexOf('/assets/')
+    if (assetsIndex >= 0) return 'url:' + value.slice(assetsIndex + 1)
+    return 'url:' + value
+  }
+
+  function getDisplayScope(display, content, rawContent) {
+    if (display.mode !== 'version') return ''
+    if (display.key) return 'key:' + display.key
+    if (content && content.type === 'url' && content.value) return getUrlScope(content, rawContent)
+    return ''
+  }
+
+  function getScopedState(state, scope) {
+    if (!scope) return state
+    if (!state || !state.scopes || typeof state.scopes !== 'object' || Array.isArray(state.scopes)) {
+      return null
+    }
+    return Object.prototype.hasOwnProperty.call(state.scopes, scope) ? state.scopes[scope] : null
+  }
+
+  function shouldShow(id, display, force, persistence, scope) {
     if (force || display.mode === 'always') return { show: true, backend: 'not-used' }
     const stored = readState(id, persistence)
-    if (display.mode === 'once' && stored.state && stored.state.acknowledged) {
+    const state = getScopedState(stored.state, scope)
+    if (display.mode === 'once' && state && state.acknowledged) {
       return { show: false, reason: 'acknowledged', backend: stored.backend }
     }
-    if (display.mode === 'version' && stored.state && stored.state.version === display.version) {
+    if (display.mode === 'version' && state && state.version === display.version) {
       return { show: false, reason: 'current-version-acknowledged', backend: stored.backend }
     }
     return { show: true, backend: stored.backend }
   }
 
-  function acknowledge(id, display, persistence) {
+  function acknowledge(id, display, persistence, scope) {
     if (display.mode === 'always') return 'not-used'
-    const state = readState(id, persistence).state || {}
+    const rootState = readState(id, persistence).state || {}
+    let state = rootState
+    if (scope) {
+      if (!rootState.scopes || typeof rootState.scopes !== 'object' || Array.isArray(rootState.scopes)) {
+        rootState.scopes = {}
+      }
+      state = getScopedState(rootState, scope) || {}
+      rootState.scopes[scope] = state
+    }
     state.acknowledged = true
     state.updatedAt = new Date().toISOString()
     if (display.mode === 'version') state.version = display.version
-    return writeState(id, state, persistence)
+    return writeState(id, rootState, persistence)
   }
 
   function resetAll(persistence) {
@@ -184,5 +226,5 @@
     return backend
   }
 
-  core.storage = { normalizeId: normalizeId, normalizePersistence: normalizePersistence, readState: readState, removeState: removeState, normalizeDisplay: normalizeDisplay, shouldShow: shouldShow, acknowledge: acknowledge, resetAll: resetAll }
+  core.storage = { normalizeId: normalizeId, normalizePersistence: normalizePersistence, readState: readState, removeState: removeState, normalizeDisplay: normalizeDisplay, getDisplayScope: getDisplayScope, shouldShow: shouldShow, acknowledge: acknowledge, resetAll: resetAll }
 })(window)

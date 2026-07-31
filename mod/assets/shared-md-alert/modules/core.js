@@ -16,6 +16,7 @@
   })
   const queue = []
   const requestsById = new Map()
+  const requestContextsById = new Map()
   let queueRunning = false
   let queueSequence = 0
 
@@ -58,6 +59,20 @@
     return request
   }
 
+  function registerRequestContext(id, context) {
+    let contexts = requestContextsById.get(id)
+    if (!contexts) {
+      contexts = []
+      requestContextsById.set(id, contexts)
+    }
+    contexts.push(context)
+    return contexts
+  }
+
+  function clearRequestContexts(id, contexts) {
+    if (requestContextsById.get(id) === contexts) requestContextsById.delete(id)
+  }
+
   global[MODULE_KEY] = {
     document: global.document,
     constants: {
@@ -82,6 +97,8 @@
     memoryStates: new Map(),
     activeId: null,
     enqueue: enqueue,
+    registerRequestContext: registerRequestContext,
+    clearRequestContexts: clearRequestContexts,
     ready: ready,
     markReady: function () {
       if (!resolveReady) {

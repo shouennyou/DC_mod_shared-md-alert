@@ -25,6 +25,20 @@
     return priority
   }
 
+  function acknowledgeRequestContexts(contexts, currentContext, fallbackBackend) {
+    let persistenceBackend = fallbackBackend
+    contexts.forEach(function (context) {
+      const backend = storage.acknowledge(
+        context.id,
+        context.display,
+        context.persistence,
+        context.displayScope
+      )
+      if (context === currentContext) persistenceBackend = backend
+    })
+    return persistenceBackend
+  }
+
   function configure(options) {
     const settings = asOptions(options)
     if (settings.persistence !== undefined) {
@@ -46,21 +60,30 @@
     const id = storage.normalizeId(options.id)
     const content = core.content.normalize(options.content)
     const display = storage.normalizeDisplay(options.display)
+    const displayScope = storage.getDisplayScope(display, content, options.content)
     const persistence = getPersistence(options)
     const priority = getPriority(options)
+    const context = { id: id, display: display, displayScope: displayScope, persistence: persistence }
+    const contexts = core.registerRequestContext(id, context)
 
-    return core.enqueue(id, async function () {
+    // 相同 id 的并发请求共用同一个弹窗和结果.
+    const request = core.enqueue(id, async function () {
       // 等待期间可能已有同类弹窗确认, 必须在实际展示前重新判断.
-      const decision = storage.shouldShow(id, display, options.force === true, persistence)
+      const decision = storage.shouldShow(id, display, options.force === true, persistence, displayScope)
       if (!decision.show) {
-        return { shown: false, id: id, reason: decision.reason, persistence: decision.backend }
+        return {
+          shown: false,
+          id: id,
+          reason: decision.reason,
+          persistence: acknowledgeRequestContexts(contexts, context, decision.backend),
+        }
       }
       core.activeId = id
       try {
         const result = await core.modal.present(options, content, core.close.normalize(options.close), id)
         let persistenceBackend = decision.backend
         if (result.isConfirmed) {
-          persistenceBackend = storage.acknowledge(id, display, persistence)
+          persistenceBackend = acknowledgeRequestContexts(contexts, context, persistenceBackend)
         }
         return {
           shown: true,
@@ -73,6 +96,12 @@
         core.activeId = null
       }
     }, priority)
+    request.then(function () {
+      core.clearRequestContexts(id, contexts)
+    }, function () {
+      core.clearRequestContexts(id, contexts)
+    })
+    return request
   }
 
   function reset(id, options) {
