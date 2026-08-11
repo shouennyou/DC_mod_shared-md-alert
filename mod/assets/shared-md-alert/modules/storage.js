@@ -24,7 +24,7 @@
   }
 
   function getConfigApi() {
-    const api = global.api && global.api.modloader
+    const api = global.modloader
     if (!api || typeof api.readFileSync !== 'function' || typeof api.writeFileSync !== 'function') {
       return null
     }

@@ -5,10 +5,13 @@
 	"逍婉瑶"
   ],
   "description": "基于 markdown-it 和 SweetAlert2 的本地内容弹窗组件, 支持 Markdown, 纯文本和网页内容, 并提供持久化显示规则和关闭限制.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "update": {
     "source": "github",
     "repo": "shouennyou/DC_mod_shared-md-alert"
+  },
+  "depends": {
+    "devilconnection-modloader": ">=1.7.0"
   },
   "injections": [
     {
