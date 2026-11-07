@@ -46,8 +46,8 @@
     } catch (error) {
       throw new Error('无法解析网页地址: ' + value)
     }
-    if (['http:', 'https:', 'file:'].indexOf(url.protocol) === -1) {
-      throw new Error('网页地址仅支持 http:, https: 和本地文件.')
+    if (['javascript:', 'vbscript:', 'data:'].indexOf(url.protocol) !== -1) {
+      throw new Error('网页地址不支持 ' + url.protocol + ' 协议.')
     }
 
     return url.href
@@ -95,8 +95,19 @@
     }
   }
 
-  async function resolveMarkdownUrl(content) {
-    if (!content.isMarkdownUrl) {
+  function toSha256Hex(buffer) {
+    if (!global.crypto || !global.crypto.subtle || typeof global.crypto.subtle.digest !== 'function') {
+      throw new Error('当前环境不支持 SHA-256 内容校验.')
+    }
+    return global.crypto.subtle.digest('SHA-256', buffer).then(function (digest) {
+      return Array.prototype.map.call(new global.Uint8Array(digest), function (byte) {
+        return byte.toString(16).padStart(2, '0')
+      }).join('')
+    })
+  }
+
+  async function resolveMarkdownUrl(content, includeSha256) {
+    if (!content.isMarkdownUrl || content.isResolvedMarkdownUrl) {
       return content
     }
     if (typeof global.fetch !== 'function') {
@@ -143,7 +154,16 @@
     }
 
     try {
-      return Object.assign({}, content, { type: 'markdown', value: await response.text() })
+      if (includeSha256) {
+        const bytes = await response.arrayBuffer()
+        return Object.assign({}, content, {
+          type: 'markdown',
+          value: new global.TextDecoder('utf-8').decode(bytes),
+          sha256: await toSha256Hex(bytes),
+          isResolvedMarkdownUrl: true,
+        })
+      }
+      return Object.assign({}, content, { type: 'markdown', value: await response.text(), isResolvedMarkdownUrl: true })
     } catch (error) {
       throw new Error('无法读取 Markdown 地址内容: ' + content.value)
     }

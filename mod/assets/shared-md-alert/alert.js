@@ -25,14 +25,15 @@
     return priority
   }
 
-  function acknowledgeRequestContexts(contexts, currentContext, fallbackBackend) {
+  function acknowledgeRequestContexts(contexts, currentContext, fallbackBackend, currentSha256) {
     let persistenceBackend = fallbackBackend
     contexts.forEach(function (context) {
       const backend = storage.acknowledge(
         context.id,
         context.display,
         context.persistence,
-        context.displayScope
+        context.displayScope,
+        context.sha256 || currentSha256
       )
       if (context === currentContext) persistenceBackend = backend
     })
@@ -68,22 +69,30 @@
 
     // 相同 id 的并发请求共用同一个弹窗和结果.
     const request = core.enqueue(id, async function () {
+      let resolvedContent = content
+      let sha256 = null
+      if (display.mode === 'hash') {
+        resolvedContent = await core.content.resolveMarkdownUrl(content, true)
+        sha256 = resolvedContent.sha256
+        if (!sha256) throw new Error('display.mode 为 hash 时必须提供可读取的 Markdown 文件地址.')
+        context.sha256 = sha256
+      }
       // 等待期间可能已有同类弹窗确认, 必须在实际展示前重新判断.
-      const decision = storage.shouldShow(id, display, options.force === true, persistence, displayScope)
+      const decision = storage.shouldShow(id, display, options.force === true, persistence, displayScope, sha256)
       if (!decision.show) {
         return {
           shown: false,
           id: id,
           reason: decision.reason,
-          persistence: acknowledgeRequestContexts(contexts, context, decision.backend),
+          persistence: acknowledgeRequestContexts(contexts, context, decision.backend, sha256),
         }
       }
       core.activeId = id
       try {
-        const result = await core.modal.present(options, content, core.close.normalize(options.close), id)
+        const result = await core.modal.present(options, resolvedContent, core.close.normalize(options.close), id)
         let persistenceBackend = decision.backend
         if (result.isConfirmed) {
-          persistenceBackend = acknowledgeRequestContexts(contexts, context, persistenceBackend)
+          persistenceBackend = acknowledgeRequestContexts(contexts, context, persistenceBackend, sha256)
         }
         return {
           shown: true,

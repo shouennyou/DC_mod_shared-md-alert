@@ -38,7 +38,7 @@ const result = await window.LocalAlert.show({
 - `url`: `.md` 或 `.markdown` 地址会作为 Markdown 获取. 默认超时 10 秒, 可通过 `content.fetchTimeoutMs` 调整.
 - `html`: 必须设置 `allowUnsafeHtml: true`, 仅应使用受信任内容.
 
-`display.mode` 支持 `always`, `once` 和 `version`. `once` 与 `version` 只会在用户确认后写入状态. `force: true` 可跳过显示规则.
+`display.mode` 支持 `always`, `once`, `hash` 和 `version`. `once`, `hash` 与 `version` 只会在用户确认后写入状态. `force: true` 可跳过显示规则.
 
 `close` 可通过 `waitSeconds`, `input`, `confirmText`, `showCloseButton`, `allowOutsideClick` 和 `allowEscapeKey` 控制关闭行为. 设置输入校验或倒计时时会自动启用关闭保护.
 

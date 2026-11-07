@@ -80,7 +80,7 @@
       styleId: 'shared-md-alert-hook-style',
       contentHostClass: 'shared-md-alert__shadow-host',
       tyranoZIndex: '2147483647',
-      markdownItFile: 'markdown-it@15.0.0/browser/markdown-it.umd.min.js',
+      markdownItFile: 'markdown-it@15.0.3/browser/markdown-it.umd.min.js',
       sweetAlertFile: 'sweetalert2@11.26.25/sweetalert2.all.min.js',
     },
     configuration: {

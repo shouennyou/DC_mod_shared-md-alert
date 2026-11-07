@@ -134,8 +134,8 @@
     const mode = settings.mode || 'always'
     const version = settings.version === undefined || settings.version === null ? '' : String(settings.version)
     const key = settings.key === undefined || settings.key === null ? '' : String(settings.key).trim()
-    if (['always', 'once', 'version'].indexOf(mode) === -1) {
-      throw new Error('display.mode 只能是 always, once 或 version.')
+    if (['always', 'once', 'version', 'hash'].indexOf(mode) === -1) {
+      throw new Error('display.mode 只能是 always, once, version 或 hash.')
     }
     if (mode === 'version' && !version) throw new Error('display.mode 为 version 时必须提供 display.version.')
     return { mode: mode, version: version, key: key }
@@ -159,7 +159,7 @@
   }
 
   function getDisplayScope(display, content, rawContent) {
-    if (display.mode !== 'version') return ''
+    if (display.mode !== 'version' && display.mode !== 'hash') return ''
     if (display.key) return 'key:' + display.key
     if (content && content.type === 'url' && content.value) return getUrlScope(content, rawContent)
     return ''
@@ -173,7 +173,7 @@
     return Object.prototype.hasOwnProperty.call(state.scopes, scope) ? state.scopes[scope] : null
   }
 
-  function shouldShow(id, display, force, persistence, scope) {
+  function shouldShow(id, display, force, persistence, scope, sha256) {
     if (force || display.mode === 'always') return { show: true, backend: 'not-used' }
     const stored = readState(id, persistence)
     const state = getScopedState(stored.state, scope)
@@ -183,10 +183,13 @@
     if (display.mode === 'version' && state && state.version === display.version) {
       return { show: false, reason: 'current-version-acknowledged', backend: stored.backend }
     }
+    if (display.mode === 'hash' && state && state.sha256 === sha256) {
+      return { show: false, reason: 'current-content-acknowledged', backend: stored.backend }
+    }
     return { show: true, backend: stored.backend }
   }
 
-  function acknowledge(id, display, persistence, scope) {
+  function acknowledge(id, display, persistence, scope, sha256) {
     if (display.mode === 'always') return 'not-used'
     const rootState = readState(id, persistence).state || {}
     let state = rootState
@@ -200,6 +203,7 @@
     state.acknowledged = true
     state.updatedAt = new Date().toISOString()
     if (display.mode === 'version') state.version = display.version
+    if (display.mode === 'hash') state.sha256 = sha256
     return writeState(id, rootState, persistence)
   }
 
