@@ -30,7 +30,7 @@ jobs:
         run: |
           ID=$(jq -r '.id' mod/modloader.mod.json)
           asar pack mod "$ID.asar"
-          echo "ID=$ID" >> $GITHUB_ENV
+          echo "ID=$ID" >> "$GITHUB_ENV"
 
       - name: Verify build
         run: |
@@ -40,20 +40,70 @@ jobs:
           fi
           echo "构建成功：$ID.asar"
 
+      - name: Generate Changelog
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          # 使用当前工作流所在的 Commit
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+
+          # 获取当前 Commit 之前最近的一个 Tag
+          PREVIOUS_TAG=$(git tag \
+            --sort=-version:refname \
+            --merged "$CURRENT_COMMIT" \
+            | head -n 1 || true)
+
+          echo "当前版本：$TAG_NAME"
+          echo "当前 Commit：$CURRENT_COMMIT"
+          echo "上一个版本：${PREVIOUS_TAG:-无}"
+
+          # 生成更新日志
+          CHANGELOG_FILE="$RUNNER_TEMP/changelog.md"
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            git log "$PREVIOUS_TAG..$CURRENT_COMMIT" \
+              --pretty=format:"%s" \
+              --no-merges \
+              --reverse > "$CHANGELOG_FILE"
+          else
+            git log "$CURRENT_COMMIT" \
+              --pretty=format:"%s" \
+              --no-merges \
+              --reverse > "$CHANGELOG_FILE"
+          fi
+
+          # 没有更新时使用默认内容
+          if [ ! -s "$CHANGELOG_FILE" ]; then
+            echo "暂无更新" > "$CHANGELOG_FILE"
+          fi
+
+          echo "CHANGELOG_FILE=$CHANGELOG_FILE" >> "$GITHUB_ENV"
+
+          echo "生成的更新日志："
+          cat "$CHANGELOG_FILE"
+
       - name: Generate update.json
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
         run: |
           UPDATE_JSON="$RUNNER_TEMP/update.json"
-          jq --arg asarUrl "https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag_name }}/$ID.asar" \
-             --arg changelog "https://github.com/${{ github.repository }}/releases/tag/${{ inputs.tag_name }}" \
+
+          jq --rawfile changelog "$CHANGELOG_FILE" \
+             --arg asarUrl "https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$ID.asar" \
              'del(.update, .injections) + {asarUrl: $asarUrl, changelog: $changelog}' \
              mod/modloader.mod.json > "$UPDATE_JSON"
-          echo "UPDATE_JSON=$UPDATE_JSON" >> $GITHUB_ENV
+
+          echo "UPDATE_JSON=$UPDATE_JSON" >> "$GITHUB_ENV"
+
+          echo "update.json 生成成功"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag_name }}
+          target_commitish: ${{ github.sha }}
           name: ${{ inputs.tag_name }}
+          body_path: ${{ env.CHANGELOG_FILE }}
           files: |
             ${{ env.ID }}.asar
             ${{ env.UPDATE_JSON }}
